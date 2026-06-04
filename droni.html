@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Warehouse Drone Scanner</title>
+<script
+src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+<style>
+ * { margin: 0; padding: 0; box-sizing: border-box; }
+ body { background: #0a0c0f; overflow: hidden; font-family: 'Courier New', monospace; }
+ canvas { display: block; position: fixed; top: 0; left: 0; }
+ #panel-left {
+ position: fixed; top: 20px; left: 20px; z-index: 10;
+ background: rgba(8,10,15,0.92); border-left: 4px solid #ffcc00;
+ border-radius: 0 10px 10px 0; padding: 18px 20px 16px;
+ width: 200px; backdrop-filter: blur(8px);
+ }
+ #panel-left h2 { color: #ffcc00; font-size: 11px; letter-spacing: 2px; margin-bottom: 16px; }
+ .field { margin-bottom: 12px; }
+ .field label { display: block; font-size: 9px; color: #666; letter-spacing: 1px; margin-bottom: 4px; }
+ .field input {
+ background: #111; border: 1px solid #333; color: #00ff66;
+ width: 80px; padding: 5px 8px; font-family: 'Courier New', monospace;
+ font-size: 13px; border-radius: 3px; outline: none;
+ }
+ .field input:focus { border-color: #ffcc00; }
+ #btn-start {
+ width: 100%; margin-top: 4px; background: #ffcc00; color: #000; border: none;
+ font-family: 'Courier New', monospace; font-weight: 700; font-size: 12px;
+ letter-spacing: 1px; padding: 10px; cursor: pointer; border-radius: 5px;
+ }
+ #btn-start:hover { background: #ffe04d; }
+ #btn-start:disabled { background: #444; color: #777; cursor: default; }
+ #flight-controls {
+ position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+ z-index: 20; display: none; align-items: center; gap: 8px;
+ background: rgba(8,10,15,0.92); border: 1px solid #333;
+ border-radius: 8px; padding: 7px 12px; backdrop-filter: blur(8px);
+ }
+ #flight-controls .fc-label { font-size: 8px; color: #555; letter-spacing: 2px; margin-right: 2px; }
+ .btn-fc {
+ font-family: 'Courier New', monospace; font-weight: 700;
+ font-size: 7.3px; letter-spacing: 1px; padding: 4.7px 10.7px;
+ cursor: pointer; border-radius: 4px; border: none;
+ transition: background 0.15s, color 0.15s;
+ }
+ #btn-skip { background: rgba(0,200,255,0.15); color: #00c8ff; border: 1px solid #00c8ff66; }
+ #btn-skip:hover { background: #00c8ff; color: #000; }
+ #btn-reset-flight { background: rgba(255,60,60,0.12); color: #ff4444; border: 1px solid #ff444466; }
+ #btn-reset-flight:hover { background: #ff4444; color: #fff; }
+ @keyframes pulse-border { 0%,100%{border-color:#ffcc0088;} 50%{border-color:#ffcc00ff;} }
+ #flight-controls.scanning { animation: pulse-border 1.4s ease-in-out infinite; }
+ #btn-internal {
+ position: fixed; bottom: 24px; right: 24px; z-index: 10;
+ background: #00c8ff; color: #000; border: none;
+ font-family: 'Courier New', monospace; font-weight: 700; font-size: 13px;
+ letter-spacing: 1px; padding: 12px 24px; cursor: pointer; border-radius: 6px; display: none;
+ }
+ #btn-internal:hover { background: #33d6ff; }
+ #btn-shelves {
+ position: fixed; bottom: 24px; right: 24px; z-index: 10;
+ background: #00ff88; color: #000; border: none;
+ font-family: 'Courier New', monospace; font-weight: 700; font-size: 13px;
+ letter-spacing: 1px; padding: 12px 24px; cursor: pointer; border-radius: 6px; display: none;
+ }
+ #btn-shelves:hover { background: #33ffaa; }
+ #btn-movim {
+ position: fixed; bottom: 68px; right: 24px; z-index: 10;
+ background: #ff9900; color: #000; border: none;
+ font-family: 'Courier New', monospace; font-weight: 700; font-size: 12px;
+ letter-spacing: 1px; padding: 10px 20px; cursor: pointer; border-radius: 6px; display: none;
+ }
+ #btn-movim:hover { background: #ffb84d; }
+ #report {
+ position: fixed; top: 20px; right: 20px; z-index: 10; width: 280px;
+ background: rgba(4,5,10,0.94); border-left: 3px solid #00ccff;
+ border-radius: 0 10px 10px 0; backdrop-filter: blur(8px); overflow: hidden; display: none;
+ }
+ #report-header {
+ display: flex; align-items: center; justify-content: space-between;
+ padding: 12px 14px; background: rgba(0,200,255,0.08); cursor: pointer;
+ }
+ #report-header span { color: #00ccff; font-size: 10px; letter-spacing: 2px; }
+ #report-toggle { color: #00ccff; font-size: 16px; transition: transform 0.25s; }
+ #report-toggle.closed { transform: rotate(-90deg); }
+ #report-body { overflow: hidden; transition: max-height 0.3s ease; max-height: 600px; }
+ #report-body.collapsed { max-height: 0; }
+ .report-section { padding: 8px 14px 4px; font-size: 9px; letter-spacing: 1.5px; color: #ffcc00; border-top: 1px solid #1a1a2a; margin-top: 4px; }
+ .report-row { display: flex; justify-content: space-between; padding: 3px 14px; font-size: 10px; }
+ .report-row .lbl { color: #666; }
+ .report-row .val { color: #00ff66; font-weight: bold; }
+ #shelf-panel {
+ position: fixed; top: 20px; right: 310px; z-index: 20; width: 295px;
+ background: rgba(4,6,12,0.97); border-left: 3px solid #00ff88;
+ border-radius: 0 10px 10px 0; backdrop-filter: blur(10px);
+ display: none; max-height: 92vh; overflow-y: auto;
+ }
+ #sp-header {
+ display: flex; align-items: center; justify-content: space-between;
+ padding: 12px 14px; background: rgba(0,255,136,0.08);
+ border-bottom: 1px solid #1a3a2a; position: sticky; top: 0; z-index: 1;
+ }
+ #sp-header span { color: #00ff88; font-size: 10px; letter-spacing: 2px; }
+ .sp-close { color: #00ff88; font-size: 18px; cursor: pointer; background: none; border: none; }
+ .sp-close:hover { color: #ff4444; }
+ .sp-body { padding: 12px 14px 0; }
+ .sp-limits {
+ background: rgba(0,255,136,0.04); border: 1px solid #1a3a2a;
+ border-radius: 4px; padding: 8px 10px; margin-bottom: 12px;
+ font-size: 9px; color: #446; letter-spacing: 0.5px; line-height: 1.9;
+ }
+ .sp-limits .lv { color: #00aa55; }
+ .sp-sec { font-size: 9px; color: #ffcc00; letter-spacing: 1.5px; margin-bottom: 8px; }
+ .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+ .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+ .sf label { display: block; font-size: 8px; color: #555; letter-spacing: 1px; margin-bottom: 3px; }
+ .sf input, .sf select {
+ width: 100%; background: #0a0f0a; border: 1px solid #2a3a2a;
+ color: #00ff88; padding: 5px 6px; font-family: 'Courier New', monospace;
+ font-size: 12px; border-radius: 3px; outline: none;
+ }
+ .sf input:focus { border-color: #00ff88; }
+ .sf input.inv { border-color: #ff4444 !important; color: #ff6666; }
+ .sf-err { font-size: 9px; color: #ff4444; min-height: 13px; margin-top: 2px; }
+ #sf-preview { font-size: 9px; color: #335; margin-bottom: 10px; min-height: 14px; }
+ #btn-fill {
+ width: 100%; background: #00ff88; color: #000; border: none;
+ font-family: 'Courier New', monospace; font-weight: 700; font-size: 12px;
+ letter-spacing: 1px; padding: 10px; cursor: pointer; border-radius: 4px; margin-bottom: 6px;
+ }
+ #btn-fill:hover { background: #33ffaa; }
+ #btn-fill:disabled { background: #1a3a2a; color: #336; cursor: default; }
+ #btn-clr {
+ width: 100%; background: transparent; border: 1px solid #2a2a2a;
+ color: #445; font-family: 'Courier New', monospace; font-size: 11px;
+ padding: 7px; cursor: pointer; border-radius: 4px; margin-bottom: 14px;
+ }
+ #btn-clr:hover { border-color: #ff4444; color: #ff4444; }
+ #sp-stats {
+ margin: 0 14px 12px; padding: 10px;
+ background: rgba(0,255,136,0.04); border: 1px solid #1a3a2a;
+ border-radius: 4px; font-size: 9px; color: #446;
+ letter-spacing: 0.5px; display: none; line-height: 2.0;
+ }
+ .sv { color: #00ff88; font-weight: bold; }
+ .sv2 { color: #ffcc00; font-weight: bold; }
+ .sv3 { color: #00ccff; font-weight: bold; }
+ .sr { display: flex; justify-content: space-between; }
+ #sp-list { padding: 0 14px 14px; }
+ .sl-title { font-size: 9px; color: #333; letter-spacing: 1.5px; margin-bottom: 6px; }
+ .sl-item {
+ display: flex; justify-content: space-between; align-items: center;
+ padding: 5px 8px; margin-bottom: 3px;
+ background: rgba(0,255,136,0.03); border: 1px solid #1a3a2a; border-radius: 4px;
+ font-size: 10px; color: #888;
+ }
+ .sl-item .si { color: #00aa55; font-size: 9px; }
+ #movim-panel {
+ position: fixed; top: 20px; left: 230px; z-index: 25; width: 320px;
+ background: rgba(4,5,15,0.97); border-left: 3px solid #ff9900;
+ border-radius: 0 10px 10px 0; backdrop-filter: blur(10px);
+ display: none; max-height: 94vh; overflow-y: auto;
+ }
+ #mp-header {
+ display: flex; align-items: center; justify-content: space-between;
+ padding: 12px 14px; background: rgba(255,153,0,0.08);
+ border-bottom: 1px solid #3a2a0a; position: sticky; top: 0; z-index: 1;
+ background: rgba(4,5,15,0.99);
+ }
+ #mp-header span { color: #ff9900; font-size: 10px; letter-spacing: 2px; }
+ .mp-close { color: #ff9900; font-size: 18px; cursor: pointer; background: none; border: none; }
+ .mp-close:hover { color: #ff4444; }
+ .mp-body { padding: 12px 14px 14px; }
+ .mp-sec {
+ font-size: 8px; color: #ff9900; letter-spacing: 1.5px;
+ margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #2a1a00;
+ }
+ .mp-sec:first-child { margin-top: 0; }
+ .mp-g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+ .mp-g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+ .mf label { display: block; font-size: 7.5px; color: #664; letter-spacing: 1px; margin-bottom: 3px; }
+ .mf input, .mf select {
+ width: 100%; background: #0f0c04; border: 1px solid #3a2a00;
+ color: #ffcc66; padding: 4px 6px; font-family: 'Courier New', monospace;
+ font-size: 11px; border-radius: 3px; outline: none;
+ }
+ .mf input:focus, .mf select:focus { border-color: #ff9900; }
+ .mf input[readonly] { color: #886600; border-color: #2a1a00; cursor: default; background: #0a0800; }
+ #btn-calc-movim {
+ width: 100%; background: #ff9900; color: #000; border: none;
+ font-family: 'Courier New', monospace; font-weight: 700; font-size: 12px;
+ letter-spacing: 1px; padding: 9px; cursor: pointer; border-radius: 4px; margin-top: 10px;
+ }
+ #btn-calc-movim:hover { background: #ffb84d; }
+ #movim-results {
+ margin-top: 10px; display: none;
+ background: rgba(255,153,0,0.04); border: 1px solid #3a2a00;
+ border-radius: 4px; padding: 10px;
+ }
+ .mr { display: flex; justify-content: space-between; padding: 2px 0; font-size: 10px; }
+ .mr .ml { color: #664; }
+ .mr .mv { color: #ffcc00; font-weight: bold; }
+ .mr .mv.hi { color: #00ff88; }
+ .mr .mv.warn { color: #ff6666; }
+ .mr-sec {
+ font-size: 8px; color: #ff9900; letter-spacing: 1.5px;
+ margin: 8px 0 4px; border-top: 1px solid #2a1a00; padding-top: 6px;
+ }
+ #btn-reset-perm {
+ position: fixed; bottom: 20px; left: 140px; z-index: 30;
+ background: rgba(255,44,44,0.13); color: #ff4444;
+ border: 1px solid #ff444455; font-family: 'Courier New', monospace;
+ font-weight: 700; font-size: 10px; letter-spacing: 1px;
+ padding: 7px 14px; cursor: pointer; border-radius: 5px;
+ backdrop-filter: blur(6px); transition: background 0.15s, color 0.15s;
+ }
+ #btn-reset-perm:hover { background: #ff4444; color: #fff; border-color: #ff4444; }
+ #statusbar { position: fixed; bottom: 20px; left: 20px; z-index: 10; font-size: 10px; color: #555; }
+ .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #333; margin-right: 5px; }
+ .dot.green { background: #00ff66; box-shadow: 0 0 5px #00ff66; }
+ .dot.yellow { background: #ffcc00; box-shadow: 0 0 5px #ffcc00; }
+</style>
+</head>
+<body>
+<div id="panel-left">
+ <h2>&gt; WAREHOUSE_SCAN</h2>
+ <div class="field"><label>LARGHEZZA (M)</label><input id="iW" type="number" value="5.0" step="0.1" min="1"></div>
+ <div class="field"><label>ALTEZZA (M)</label><input id="iH" type="number" value="2.5" step="0.1" min="1"></div>
+ <div class="field"><label>PROFONDITA (M)</label><input id="iD" type="number" value="8.0" step="0.1" min="1"></div>
+ <button id="btn-start" onclick="doStartScan()">▶ START SCAN</button>
+</div>
+<div id="flight-controls">
+ <span class="fc-label">FLIGHT</span>
+ <button class="btn-fc" id="btn-skip" onclick="skipPhase()">⏭ SALTA FASE</button>
+ <button class="btn-fc" id="btn-reset-flight" onclick="resetAll()">↺ RESET</button>
+</div>
+<button id="btn-internal" onclick="doStartInternalScan()">▶ INTERNAL SCAN</button>
+<button id="btn-shelves" onclick="toggleShelfPanel()">+ INSERISCI SCAFFALI</button>
+<button id="btn-movim" onclick="toggleMovimPanel()">📦 CALCOLO MOVIMENTAZIONE</button>
+<div id="report">
+ <div id="report-header" onclick="toggleReport()">
+ <span>&gt; STRUCTURAL REPORT</span>
+ <span id="report-toggle">▾</span>
+ </div>
+ <div id="report-body"></div>
+</div>
+<div id="shelf-panel">
+ <div id="sp-header">
+ <span>&gt; SCAFFALATURE</span>
+ <button class="sp-close" onclick="toggleShelfPanel()">✕</button>
+ </div>
+ <div class="sp-body">
+ <div class="sp-limits" id="sp-limits">Completa entrambe le scansioni per sbloccare.</div>
+ <div class="sp-sec">DIMENSIONI SCAFFALE (M)</div>
+ <div class="g3">
+ <div class="sf"><label>LARG. X</label>
+ <input id="sf-w" type="number" value="1.20" step="0.05" oninput="validate()">
+ <div class="sf-err" id="e-w"></div></div>
+ <div class="sf"><label>PROF. Y</label>
+ <input id="sf-d" type="number" value="0.80" step="0.05" oninput="validate()">
+ <div class="sf-err" id="e-d"></div></div>
+ <div class="sf"><label>ALT. Z</label>
+ <input id="sf-h" type="number" value="2.00" step="0.05" oninput="validate()">
+ <div class="sf-err" id="e-h"></div></div>
+ </div>
+ <div class="g2">
+ <div class="sf"><label>N° LIVELLI <span style="color:#00aa55;font-size:7px">(AUTO)</span></label>
+ <input id="sf-lv" type="number" value="1" step="1" min="1" readonly style="color:#00aa55;border-color:#1a3a2a;cursor:default">
+ <div class="sf-err" id="e-lv" style="color:#00aa55"></div></div>
+ <div class="sf"><label>CORRIDOIO (M)</label>
+ <input id="sf-cr" type="number" value="2.50" step="0.25" oninput="validate()">
+ <div class="sf-err" id="e-cr"></div></div>
+ </div>
+ <div id="sf-preview"></div>
+ <button id="btn-fill" onclick="autoFill()" disabled>⚡ RIEMPI AUTOMATICAMENTE</button>
+ <button id="btn-clr" onclick="clearAll()">✕ RIMUOVI TUTTI</button>
+ </div>
+ <div id="sp-stats"></div>
+ <div id="sp-list">
+ <div class="sl-title">SCAFFALI POSIZIONATI</div>
+ <div id="sl-items"><div style="font-size:9px;color:#333">Nessuno</div></div>
+ </div>
+</div>
+<div id="movim-panel">
+ <div id="mp-header">
+ <span>&gt; CALCOLO MOVIMENTAZIONE</span>
+ <button class="mp-close" onclick="toggleMovimPanel()">✕</button>
+ </div>
+ <div class="mp-body">
+ <div class="mp-sec">UDC — UNITÀ DI CARICO</div>
+ <div class="mp-g3">
+ <div class="mf"><label>l_UDC (m) X</label><input id="m-ludcX" type="number" value="1.20" step="0.05"></div>
+ <div class="mf"><label>w_UDC (m) Y</label><input id="m-wudc" type="number" value="0.80" step="0.05"></div>
+ <div class="mf"><label>h_UDC (m) Z</label><input id="m-hudc" type="number" value="1.75" step="0.05"></div>
+ </div>
+ <div class="mp-sec">GEOMETRIA VANO / CELLA</div>
+ <div class="mp-g2">
+ <div class="mf"><label>n_UDC per vano</label><input id="m-nudcV" type="number" value="1" step="1" min="1"></div>
+ <div class="mf"><label>l₀ luce orizz. (m)</label><input id="m-l0" type="number" value="0.075" step="0.005"></div>
+ </div>
+ <div class="mp-g2">
+ <div class="mf"><label>d_UDC,L dist.lat. (m)</label><input id="m-dudcL" type="number" value="0.075" step="0.005"></div>
+ <div class="mf"><label>s_Montante (m)</label><input id="m-sMont" type="number" value="0.10" step="0.01"></div>
+ </div>
+ <div class="mp-g2">
+ <div class="mf"><label>l_v luce vert. (m)</label><input id="m-lv2" type="number" value="0.10" step="0.01"></div>
+ <div class="mf"><label>s_Corrente (m)</label><input id="m-sCor" type="number" value="0.10" step="0.01"></div>
+ </div>
+ <div class="mp-g2">
+ <div class="mf"><label>%Debordo (0‥1)</label><input id="m-deb" type="number" value="0.10" step="0.01" min="0" max="1"></div>
+ <div class="mf"><label>d_w dist.UDC prof.(m)</label><input id="m-dw" type="number" value="0.05" step="0.01"></div>
+ </div>
+ <div class="mp-sec">MAGAZZINO — DA SCANSIONE <span style="color:#664;font-size:6px">(AUTO)</span></div>
+ <div class="mp-g3">
+ <div class="mf"><label>H_Utile (m)</label><input id="m-hUtile" type="number" step="0.01" readonly></div>
+ <div class="mf"><label>A_Utile (m²)</label><input id="m-aUtile" type="number" step="0.01" readonly></div>
+ <div class="mf"><label>n_Livelli</label><input id="m-nLiv" type="number" step="1" readonly></div>
+ </div>
+ <div class="mp-sec">PUNTO I/O E CORRIDOIO</div>
+ <div class="mp-g2">
+ <div class="mf"><label>Posizione I/O (r=U/V)</label>
+ <select id="m-pio">
+ <option value="1.5">Centrale distr. fronte (r=1.5)</option>
+ <option value="2">Centrale sul fronte (r=2)</option>
+ <option value="1">Vertice fronte (r=1)</option>
+ </select>
+ </div>
+ <div class="mf"><label>L_Corridoio (m)</label><input id="m-lc" type="number" value="2.50" step="0.25"></div>
+ </div>
+ <div class="mp-sec">VELOCITÀ MEZZO (m/s)</div>
+ <div class="mp-g2">
+ <div class="mf"><label>v_IN andata</label><input id="m-vin" type="number" value="1.5" step="0.1"></div>
+ <div class="mf"><label>v_OUT ritorno</label><input id="m-vout" type="number" value="1.5" step="0.1"></div>
+ </div>
+ <div class="mp-g2">
+ <div class="mf"><label>v_Up forche ↑</label><input id="m-vup" type="number" value="0.3" step="0.05"></div>
+ <div class="mf"><label>v_Down forche ↓</label><input id="m-vdn" type="number" value="0.3" step="0.05"></div>
+ </div>
+ <div class="mp-sec">TEMPI FISSI E DOMANDA</div>
+ <div class="mp-g2">
+ <div class="mf"><label>T_Fissi (s)</label><input id="m-tfissi" type="number" value="30" step="1"></div>
+ <div class="mf"><label>f_U utilizz. (0‥1)</label><input id="m-fu" type="number" value="0.85" step="0.05" min="0.1" max="1"></div>
+ </div>
+ <div class="mp-g2">
+ <div class="mf"><label>Q_Richiesta (UDC/h)</label><input id="m-qrich" type="number" value="50" step="1"></div>
+ <div class="mf"></div>
+ </div>
+ <button id="btn-calc-movim" onclick="calcMovim()">⚡ CALCOLA MOVIMENTAZIONE</button>
+ <div id="movim-results"></div>
+ </div>
+</div>
+<div id="statusbar">
+ <span class="dot" id="dot-scan"></span><span id="phase">IDLE</span>
+</div>
+<button id="btn-reset-perm" onclick="resetAll()">↺ RESET</button>
+<script>
+const WALL_T=0.25, COL_W=0.50, BEAM_H=0.50, SLAB_T=0.20;
+const ROOF_BW=0.20, ROOF_BH=0.35, M=100;
+const UDC_L=1.20, UDC_W=0.80, UDC_H=1.75;
+let drone, fase="IDLE", tIdx=0, rot=0;
+let W,H,D;
+let targets=[],sparks=[],env=[];
+let phase="EXT", iTargets=[],iIdx=0,iSparks=[];
+let showWalls=false, droneOn=false;
+let shelves=[];
+let spOpen=false, movimOpen=false;
+let inputsOk=false;
+let netW=0, netH=0, netD=0;
+function showFlightBar(s){
+ const b=document.getElementById('flight-controls');
+ b.style.display=s?'flex':'none';
+ s?b.classList.add('scanning'):b.classList.remove('scanning');
+}
+function skipPhase(){
+ if(fase==="TAKEOFF"||fase==="SCANNING"){
+ if(fase==="TAKEOFF"){drone.y=-H;fase="SCANNING";phase="EXT";setPhase("SCANNING EXT","yellow");}
+ if(fase==="SCANNING"){
+ if(phase==="EXT"){
+ tIdx=targets.length;drone.set(0,-H-200,0);
+ fase="DONE_EXT";setPhase("SCAN ESTERNA OK","green");
+ showFlightBar(false);
+ document.getElementById('btn-internal').style.display='block';
+ document.getElementById('btn-start').disabled=false;
+ document.getElementById('btn-start').textContent='▶ NEW SCAN';
+ droneOn=false;
+ }else{
+ iIdx=iTargets.length;drone.set(0,-H-200,0);
+ fase="DONE_INT";showWalls=true;setPhase("SCAN INTERNA OK","green");
+ showFlightBar(false);buildReport();initNetDims();
+ document.getElementById('btn-shelves').style.display='block';
+ droneOn=false;
+ }
+ }
+ }else if(fase==="RETURN"||fase==="RETURN_INT"){drone.set(0,-H-200,0);}
+}
+function resetAll(){
+ fase="IDLE";phase="EXT";droneOn=false;showWalls=false;
+ tIdx=0;iIdx=0;targets=[];sparks=[];iSparks=[];
+ shelves=[];netW=0;netH=0;netD=0;
+ if(drone)drone.set(0,0,0);
+ showFlightBar(false);
+ ['btn-internal','btn-shelves','btn-movim'].forEach(id=>document.getElementById(id).style.display='none');
+ document.getElementById('btn-start').disabled=false;
+ document.getElementById('btn-start').textContent='▶ START SCAN';
+ document.getElementById('report').style.display='none';
+ document.getElementById('shelf-panel').style.display='none';
+ document.getElementById('movim-panel').style.display='none';
+ document.getElementById('sp-limits').innerHTML='Completa entrambe le scansioni per sbloccare.';
+ spOpen=false;movimOpen=false;
+ renderList();renderStats();
+ setPhase("IDLE","");
+ document.getElementById('dot-scan').className='dot';
+}
+function setup(){createCanvas(windowWidth,windowHeight,WEBGL);drone=createVector(0,0,0);frameRate(45);}
+function draw(){
+ background(12,14,18);orbitControl();
+ if(mouseIsPressed)loop();
+ ambientLight(55);directionalLight(255,240,200,0.5,1,-0.2);
+ if(droneOn)pointLight(180,180,255,drone.x,drone.y,drone.z);
+ drawGround();
+ for(let e of env){
+ push();translate(e.x,0,e.z);rotateY(e.r);
+ if(e.t===0){fill(100,30,20);noStroke();translate(0,-25,0);box(120,50,40);}
+ else if(e.t===1){fill(70,50,30);noStroke();translate(0,-5,0);box(90,10,90);}
+ else{fill(80);noStroke();translate(0,-100,0);cylinder(35,200);}
+ pop();
+ }
+ let showStr=(fase==="DONE_EXT"||fase==="DONE_INT"||phase==="INT");
+ if(showStr)drawStructureOpaque(W,H,D);
+ if(droneOn){
+ push();translate(drone.x,drone.y,drone.z);drawDrone();pop();
+ if(fase==="SCANNING"){phase==="EXT"?drawLaser(sparks,0,255,200):drawLaser(iSparks,255,120,0);}
+ }
+ if(shelves.length>0&&showStr)drawShelves();
+ if(showWalls)drawWalls(W,H,D);
+ if(showStr)drawStructureTransparent(W,H,D);
+ if(fase==="SCANNING"&&phase==="INT")drawIntVolume();
+ stateMachine();
+}
+function stateMachine(){
+ const sp=9;
+ if(fase==="TAKEOFF"){drone.y-=4;rot+=1.5;if(drone.y<=-H){fase="SCANNING";setPhase("SCANNING EXT","yellow");}}
+ else if(fase==="SCANNING"){rot+=1.5;
+ if(phase==="EXT"){if(tIdx<targets.length)moveDrone(targets[tIdx],()=>tIdx++,sp);else{fase="RETURN";setPhase("RETURN","yellow");}}
+ else{if(iIdx<iTargets.length)moveDrone(iTargets[iIdx],()=>iIdx++,sp);else{fase="RETURN_INT";setPhase("RETURN INT","yellow");}}}
+ else if(fase==="RETURN"){rot+=1.5;moveDrone(createVector(0,-H-200,0),()=>{
+ fase="DONE_EXT";setPhase("SCAN ESTERNA OK","green");showFlightBar(false);
+ document.getElementById('btn-internal').style.display='block';
+ document.getElementById('btn-start').disabled=false;
+ document.getElementById('btn-start').textContent='▶ NEW SCAN';droneOn=false;noLoop();},sp);}
+ else if(fase==="RETURN_INT"){rot+=1.5;moveDrone(createVector(0,-H-200,0),()=>{
+ fase="DONE_INT";showWalls=true;setPhase("SCAN INTERNA OK","green");showFlightBar(false);
+ buildReport();initNetDims();
+ document.getElementById('btn-shelves').style.display='block';droneOn=false;noLoop();},sp);}
+}
+function initNetDims(){
+ netW=W/M-2*WALL_T; netH=H/M-BEAM_H-SLAB_T; netD=D/M-2*WALL_T;
+ document.getElementById('sp-limits').innerHTML=
+ `Max largh. scaffale (X): <span class="lv">${netW.toFixed(2)} m</span><br>`+
+ `Max alt. scaffale (Z): <span class="lv">${netH.toFixed(2)} m</span><br>`+
+ `Max prof. scaffale (Y): <span class="lv">${(netD/2).toFixed(2)} m</span> (file doppie)<br>`+
+ `UDC standard: <span class="lv">${UDC_L}×${UDC_W}×${UDC_H} m</span>`;
+ document.getElementById('m-hUtile').value=netH.toFixed(2);
+ document.getElementById('m-aUtile').value=(netW*netD).toFixed(2);
+ validate();
+}
+function validate(){
+ if(!netW){inputsOk=false;return;}
+ const sw=parseFloat(document.getElementById('sf-w').value);
+ const sd=parseFloat(document.getElementById('sf-d').value);
+ const sh=parseFloat(document.getElementById('sf-h').value);
+ const cr=parseFloat(document.getElementById('sf-cr').value);
+ let ok=true;
+ function chk(inId,erId,v,mn,mx){
+ const el=document.getElementById(inId),er=document.getElementById(erId);
+ if(isNaN(v)||v<mn){el.classList.add('inv');er.textContent=`Min ${mn} m`;ok=false;}
+ else if(v>mx){el.classList.add('inv');er.textContent=`Max ${mx.toFixed(2)} m`;ok=false;}
+ else{el.classList.remove('inv');er.textContent='';}
+ }
+ chk('sf-w','e-w',sw,0.30,netW);
+ chk('sf-d','e-d',sd,0.20,netD/2);
+ chk('sf-h','e-h',sh,0.30,netH);
+ const maxLv=Math.max(1,Math.floor(sh/(UDC_H+0.10)));
+ document.getElementById('sf-lv').value=maxLv;
+ document.getElementById('e-lv').textContent=isNaN(sh)||sh<=0?'':`${maxLv} liv. × ${(sh/maxLv).toFixed(2)}m`;
+ const crEl=document.getElementById('sf-cr'),crEr=document.getElementById('e-cr');
+ if(isNaN(cr)||cr<1.5){crEl.classList.add('inv');crEr.textContent='Min 1.5 m';ok=false;}
+ else{crEl.classList.remove('inv');crEr.textContent='';}
+ inputsOk=ok;
+ document.getElementById('btn-fill').disabled=!ok;
+ if(!isNaN(sw)&&!isNaN(sd)&&!isNaN(sh)&&sw>0&&sd>0&&sh>0){
+ const lvOtt=Math.max(1,Math.floor(sh/(UDC_H+0.10)));
+ const u=calcUDC(sw,sd,sh,lvOtt);
+ const{nX,nY}=bestOri(sw,sd);
+ document.getElementById('sf-preview').innerHTML=
+ `<span style="color:#00aa55">Max livelli: ${lvOtt}</span>`+
+ ` <span style="color:#446">(${(sh/lvOtt).toFixed(2)}m/liv)</span> — `+
+ `<span style="color:#00aa55">UDC/scaffale: ${u}</span>`+
+ ` <span style="color:#334">(${nX}×${nY}×${lvOtt})</span>`;
+ }else document.getElementById('sf-preview').innerHTML='';
+}
+function bestOri(sw,sd){
+ const uX=sw-0.15,uY=sd-0.15;
+ const nAx=Math.floor(uX/UDC_L),nAy=Math.floor(uY/UDC_W);
+ const nBx=Math.floor(uX/UDC_W),nBy=Math.floor(uY/UDC_L);
+ return(nBx*nBy>nAx*nAy)?{nX:nBx,nY:nBy}:{nX:nAx,nY:nAy};
+}
+function calcUDC(sw,sd,sh,lv){
+ if(sh/lv<UDC_H+0.10)return 0;
+ const{nX,nY}=bestOri(sw,sd);return nX*nY*lv;
+}
+function autoFill(){
+ if(!inputsOk)return;
+ const sw=parseFloat(document.getElementById('sf-w').value);
+ const sd=parseFloat(document.getElementById('sf-d').value);
+ const sh=parseFloat(document.getElementById('sf-h').value);
+ const cr=parseFloat(document.getElementById('sf-cr').value);
+ const lv=Math.max(1,Math.floor(sh/(UDC_H+0.10)));
+ document.getElementById('sf-lv').value=lv;
+ document.getElementById('e-lv').textContent='Calcolato automaticamente';
+ shelves=[];
+ const marginW=0.30,marginD=0.30,gapBack=0.10,gapShelf=0.05,maxRowX=40.0,gapEmerg=1.20;
+ let zCur=(-netD/2+marginD+cr)*M;
+ while(true){
+ const zA=zCur,zB=zA+(sd+gapBack)*M;
+ if((zB+sd*M)/M>netD/2-marginD)break;
+ shelves=shelves.concat(
+ makeRow(sw,sd,sh,lv,zA,netW,marginW,gapShelf,gapEmerg,maxRowX),
+ makeRow(sw,sd,sh,lv,zB,netW,marginW,gapShelf,gapEmerg,maxRowX)
+ );
+ zCur=zB+sd*M+cr*M;
+ if(zCur/M+sd>netD/2-marginD)break;
+ }
+ renderList();renderStats();
+ if(shelves.length>0){
+ document.getElementById('btn-movim').style.display='block';
+ document.getElementById('m-nLiv').value=shelves[0].lv;
+ document.getElementById('m-lc').value=cr.toFixed(2);
+ document.getElementById('m-ludcX').value=UDC_L;
+ document.getElementById('m-wudc').value=UDC_W;
+ document.getElementById('m-hudc').value=UDC_H;
+ }
+}
+function makeRow(sw,sd,sh,lv,zPx,nW,mW,gapS,gapE,maxR){
+ const row=[];let xCur=(-nW/2+mW)*M,rowLen=0;
+ while(true){
+ if(rowLen+sw>maxR&&rowLen>0){xCur+=gapE*M;rowLen=0;}
+ if((xCur+sw*M)/M>nW/2-mW)break;
+ row.push({x:xCur+sw*M/2,z:zPx+sd*M/2,w:sw,d:sd,h:sh,lv});
+ xCur+=(sw+gapS)*M;rowLen+=sw+gapS;
+ }
+ return row;
+}
+function clearAll(){
+ shelves=[];renderList();renderStats();
+ document.getElementById('btn-movim').style.display='none';
+ document.getElementById('movim-panel').style.display='none';
+ movimOpen=false;
+}
+function drawShelves(){
+ const st = SLAB_T*M;
+ const UPW = 0.09*M;
+ const UPD = 0.09*M;
+ const BH = 0.09*M;
+ const BD = 0.04*M;
+ const TH = 0.07*M;
+ const TD = 0.04*M;
+ for(let s of shelves){
+ const sw=s.w*M, sd=s.d*M, sh=s.h*M;
+ const px=s.x, pz=s.z;
+ const lvH = sh / s.lv;
+ push(); translate(px, -(st + sh/2), pz);
+ const innerW = sw - UPW*2;
+ const spanTgt = 1.7*M;
+ const nSpans = Math.max(1, Math.round(innerW / spanTgt));
+ const upX = [];
+ for(let i=0; i<=nSpans; i++){
+ upX.push(-sw/2 + UPW/2 + i*(innerW/nSpans));
+ }
+ fill(35, 50, 88); noStroke();
+ for(let[dx,dz] of [[-1,-1],[-1,1],[1,-1],[1,1]]){
+ const ux = dx*(sw/2 - UPW/2);
+ const uz = dz*(sd/2 - UPD/2);
+ push(); translate(ux, 0, uz); box(UPW, sh, UPD); pop();
+ stroke(25,35,65,160); strokeWeight(0.7); noFill();
+ for(let hi=0.40*M; hi<sh-0.05*M; hi+=0.40*M){
+ push(); translate(ux, -sh/2+hi, uz); box(UPW+2,1.5,UPD+2); pop();
+ }
+ fill(35,50,88); noStroke();
+ }
+ for(let dz of [-1,1]){
+ const uz = dz*(sd/2 - UPD/2);
+ for(let i=1; i<nSpans; i++){
+ const mx = upX[i];
+ push(); translate(mx, 0, uz); box(UPW*0.85, sh, UPD*0.85); pop();
+ stroke(25,35,65,160); strokeWeight(0.7); noFill();
+ for(let hi=0.40*M; hi<sh-0.05*M; hi+=0.40*M){
+ push(); translate(mx, -sh/2+hi, uz); box(UPW,1.5,UPD); pop();
+ }
+ fill(35,50,88); noStroke();
+ }
+ }
+ fill(215, 70, 25); noStroke();
+ for(let l=0; l<=s.lv; l++){
+ const by = -sh/2 + l*lvH;
+ for(let dz of[-1,1]){
+ const bz = dz*(sd/2 - UPD/2);
+ push(); translate(0, by, bz); box(sw - UPW*2, BH, BD); pop();
+ fill(170, 50, 15); noStroke();
+ for(let dx of[-1,1]){
+ push(); translate(dx*(sw/2 - UPW/2), by, bz);
+ box(UPW, BH+5, BD+10); pop();
+ }
+ fill(215,70,25); noStroke();
+ }
+ }
+ fill(200, 62, 20); noStroke();
+ for(let l=0; l<=s.lv; l++){
+ const by = -sh/2 + l*lvH;
+ for(let i=0; i<upX.length; i++){
+ const tx = upX[i];
+ push(); translate(tx, by, 0);
+ box(TD, TH, sd - UPD*2);
+ pop();
+ }
+ }
+ pop();
+ }
+}
+function renderList(){
+ const c=document.getElementById('sl-items');
+ if(!shelves.length){c.innerHTML='<div style="font-size:9px;color:#333">Nessuno</div>';return;}
+ c.innerHTML=shelves.slice(0,15).map((s,i)=>
+ `<div class="sl-item"><div>
+ <div style="color:#777;font-size:10px">Scaffale ${i+1}</div>
+ <div class="si">${s.w.toFixed(2)}×${s.d.toFixed(2)}×${s.h.toFixed(2)} m · ${s.lv} liv</div>
+ </div></div>`).join('')+
+ (shelves.length>15?`<div style="font-size:9px;color:#333;padding:4px 0">...e altri ${shelves.length-15}</div>`:'');
+}
+function renderStats(){
+ const el=document.getElementById('sp-stats');
+ if(!shelves.length){el.style.display='none';return;}
+ const s0=shelves[0];
+ const udcPS=calcUDC(s0.w,s0.d,s0.h,s0.lv);
+ const totUDC=udcPS*shelves.length;
+ const fp=shelves.reduce((a,s)=>a+s.w*s.d,0);
+ const eff=netW*netD>0?(fp/(netW*netD)*100).toFixed(1):0;
+ const lvHm=(s0.h/s0.lv).toFixed(2);
+ el.innerHTML=
+ `<div class="sr"><span>Scaffali totali:</span><span class="sv">${shelves.length}</span></div>`+
+ `<div class="sr"><span>Livelli/scaffale:</span><span class="sv">${s0.lv}</span></div>`+
+ `<div class="sr"><span>Altezza livello:</span><span class="sv">${lvHm} m</span></div>`+
+ `<div class="sr"><span>UDC per scaffale:</span><span class="sv2">${udcPS}</span></div>`+
+ `<div class="sr"><span>UDC totali:</span><span class="sv2">${totUDC}</span></div>`+
+ `<div class="sr"><span>Impronta scaffali:</span><span class="sv3">${fp.toFixed(1)} m²</span></div>`+
+ `<div class="sr"><span>Utilizzo area netta:</span><span class="sv3">${eff}%</span></div>`;
+ el.style.display='block';
+}
+function toggleShelfPanel(){
+ spOpen=!spOpen;
+ document.getElementById('shelf-panel').style.display=spOpen?'block':'none';
+ if(spOpen&&netW>0)validate();
+}
+function toggleMovimPanel(){
+ movimOpen=!movimOpen;
+ document.getElementById('movim-panel').style.display=movimOpen?'block':'none';
+}
+function calcMovim(){
+ const g=id=>parseFloat(document.getElementById(id).value);
+ const gi=id=>parseInt(document.getElementById(id).value);
+ const lUDC=g('m-ludcX'), wUDC=g('m-wudc'), hUDC=g('m-hudc');
+ const nUdcV=g('m-nudcV'), l0=g('m-l0'), dUdcL=g('m-dudcL');
+ const sMont=g('m-sMont'), lv2=g('m-lv2'), sCor=g('m-sCor');
+ const deb=g('m-deb'), dw=g('m-dw');
+ const hUtile=g('m-hUtile'), aUtile=g('m-aUtile');
+ let nLiv=gi('m-nLiv');
+ const r=g('m-pio'), lCor=g('m-lc');
+ const vIn=g('m-vin'), vOut=g('m-vout'), vUp=g('m-vup'), vDn=g('m-vdn');
+ const tFissi=g('m-tfissi'), fU=g('m-fu'), qRich=g('m-qrich');
+ const cVano = nUdcV;
+ const lVano = 2*l0 + nUdcV*lUDC + dUdcL*(cVano-1);
+ const lCella = lVano + sMont;
+ const hVano = hUDC + lv2;
+ const hCella = hVano + sCor;
+ const wCella = wUDC*(1+deb);
+ if(!nLiv||nLiv<1){ nLiv=Math.max(1,Math.floor(hUtile/hCella)); document.getElementById('m-nLiv').value=nLiv; }
+ const lModulo = lCella;
+ const wModulo = 2*wCella + lCor + dw;
+ const aModulo = lModulo * wModulo;
+ const cCampata = nLiv * cVano;
+ const cModulo = nLiv * cVano * 2;
+ const CUS = cModulo / aModulo;
+ const CUV = cModulo / (aModulo * hUtile);
+ const PR = CUS * aUtile;
+ const U_ott = Math.sqrt(aUtile / r);
+ const V_ott = r * U_ott;
+ const nCorridoi = Math.ceil(U_ott / wModulo);
+ const nCampate = Math.ceil(PR / (cVano * nLiv * 2 * nCorridoi));
+ const V_eff = nCampate * lCella;
+ const U_eff = U_ott;
+ const PR_eff = nCampate * cModulo * nCorridoi;
+ let pMedia;
+ if(r===1.5) pMedia = U_eff/3 + V_eff/2;
+ else if(r===2) pMedia = U_eff/4 + V_eff/2;
+ else pMedia = U_eff/2 + V_eff/2;
+ const tPercorso = pMedia/vIn + pMedia/vOut;
+ const sUp = 0.5 * hCella * (nLiv - 1);
+ const tForche = sUp/vUp + sUp/vDn;
+ const tCiclo = tPercorso + tForche + tFissi;
+ const qNom = 3600 / tCiclo;
+ const qReale = fU * qNom;
+ const nMezzi = Math.ceil(qRich / qReale);
+ const qTotale = nMezzi * qReale;
+ const res=document.getElementById('movim-results');
+ const row=(l,v,c='')=>`<div class="mr"><span class="ml">${l}</span><span class="mv ${c}">${v}</span></div>`;
+ const sec=t=>`<div class="mr-sec">${t}</div>`;
+ res.innerHTML=
+ sec('① GEOMETRIA VANO / CELLA')+
+ row('L_Vano',lVano.toFixed(3)+' m')+
+ row('L_Cella',lCella.toFixed(3)+' m')+
+ row('H_Vano',hVano.toFixed(3)+' m')+
+ row('H_Cella',hCella.toFixed(3)+' m')+
+ row('W_Cella',wCella.toFixed(3)+' m')+
+ sec('③ MODULO UNITARIO')+
+ row('L_Modulo',lModulo.toFixed(3)+' m')+
+ row('W_Modulo',wModulo.toFixed(3)+' m')+
+ row('A_Modulo',aModulo.toFixed(2)+' m²')+
+ row('C_Campata',cCampata)+
+ row('C_Modulo',cModulo)+
+ row('CUS',CUS.toFixed(2)+' UDC/m²','hi')+
+ row('CUV',CUV.toFixed(3)+' UDC/m³','hi')+
+ sec('⑤ POTENZIALITÀ RICETTIVA')+
+ row('PR = CUS × A_Utile',Math.round(PR)+' PP','hi')+
+ sec('⑥ LAYOUT OTTIMALE')+
+ row('r = U/V',r)+
+ row('U ottimale',U_ott.toFixed(2)+' m')+
+ row('V ottimale',V_ott.toFixed(2)+' m')+
+ row('N. corridoi (↑)',nCorridoi)+
+ row('N. campate (↑)',nCampate)+
+ row('V_eff',V_eff.toFixed(2)+' m')+
+ row('U_eff',U_eff.toFixed(2)+' m')+
+ row('PR_eff',PR_eff+' PP','hi')+
+ sec('⑦ PERCORSO E CICLO')+
+ row('P_Media',pMedia.toFixed(2)+' m')+
+ row('T_Percorso',tPercorso.toFixed(1)+' s')+
+ row('S_UP = S_DOWN',sUp.toFixed(2)+' m')+
+ row('T_Forche',tForche.toFixed(1)+' s')+
+ row('T_Fissi',tFissi+' s')+
+ row('T_CICLO',tCiclo.toFixed(1)+' s','hi')+
+ sec('⑨ POTENZIALITÀ E MEZZI')+
+ row('Q_Nominale',qNom.toFixed(1)+' UDC/h','hi')+
+ row('f_U',fU)+
+ row('Q_Reale',qReale.toFixed(1)+' UDC/h')+
+ row('Q_Richiesta',qRich+' UDC/h')+
+ row('n_Mezzi necessari',nMezzi,(nMezzi>5?'warn':'hi'))+
+ row('Q_Totale mezzi',qTotale.toFixed(1)+' UDC/h');
+ res.style.display='block';
+}
+function drawStructureOpaque(sw,sh,sd){
+ let cw=COL_W*M,bh=BEAM_H*M,st=SLAB_T*M,rbw=ROOF_BW*M,rbh=ROOF_BH*M;
+ let nA=max(2,ceil(sd/150)),stepZ=sd/(nA-1);
+ push();translate(0,st/2,0);fill(60,55,50,200);noStroke();box(sw,st,sd);pop();
+ for(let i=0;i<nA;i++){let z=-sd/2+i*stepZ;
+ drawPilastro(-sw/2+cw/2,sh,z,cw,bh,st);drawPilastro(sw/2-cw/2,sh,z,cw,bh,st);
+ push();translate(0,-sh+bh/2,z);fill(140,125,100,240);noStroke();box(sw-cw*2,rbh,rbw);pop();}
+ for(let s of[-1,1]){push();translate(s*(sw/2-cw/2),-sh+bh/2,0);fill(160,140,100,240);noStroke();box(cw*1.1,bh,sd);pop();}
+ for(let li=0;li<3;li++){let xL=-sw/2+(li+1)*(sw/4);push();translate(xL,-sh+bh/2,0);fill(130,115,90,240);noStroke();box(rbw,rbh*0.85,sd);pop();}
+}
+function drawPilastro(x,sh,z,cw,bh,st){
+ let colH=sh-bh-st;push();translate(x,-(st+colH/2),z);fill(150,138,118,255);noStroke();box(cw,colH,cw);pop();
+}
+function drawStructureTransparent(sw,sh,sd){
+ let arcH=sw*0.2,nA=max(2,ceil(sd/150)),stepZ=sd/(nA-1);
+ for(let i=0;i<nA;i++){let z=-sd/2+i*stepZ;
+ noFill();stroke(255,204,0,200);strokeWeight(2.5);beginShape();
+ for(let x=-sw/2;x<=sw/2;x+=15){let nx=x/(sw/2),yo=(1-nx*nx)*arcH;vertex(x,-sh-yo,z);}endShape();
+ stroke(255,204,0,60);strokeWeight(1);
+ for(let rx of[-sw/2,-sw/4,0,sw/4,sw/2]){let nx=rx/(sw/2),yo=(1-nx*nx)*arcH;line(rx,-sh,z,rx,-sh-yo,z);}}
+ noFill();stroke(255,220,80,120);strokeWeight(1.8);
+ for(let li=0;li<5;li++){let xL=-sw/2+li*(sw/4),nxL=xL/(sw/2),yoL=(1-nxL*nxL)*arcH;
+ beginShape();for(let i=0;i<nA;i++)vertex(xL,-sh-yoL,-sd/2+i*stepZ);endShape();}
+ if(!showWalls){push();translate(0,-sh/2,0);fill(255,204,0,10);noStroke();box(sw,sh,sd);pop();}
+}
+function drawWalls(sw,sh,sd){
+ let wt=WALL_T*M,bh=BEAM_H*M,st=SLAB_T*M,wH=sh-bh-st,wY=-(st+wH/2);
+ for(let[x,y,z,bx,by,bz]of[
+ [-sw/2+wt/2,wY,0,wt,wH,sd],[sw/2-wt/2,wY,0,wt,wH,sd],
+ [0,wY,sd/2-wt/2,sw,wH,wt],[0,wY,-sd/2+wt/2,sw,wH,wt]]){
+ push();translate(x,y,z);fill(80,140,255,16);stroke(120,180,255,40);strokeWeight(0.3);box(bx,by,bz);pop();}
+}
+function drawIntVolume(){
+ let wt=WALL_T*M,bh=BEAM_H*M,st=SLAB_T*M,IW=W-2*wt,IH=H-bh-st,ID=D-2*wt;
+ push();translate(0,-(st+IH/2),0);stroke(255,100,0,50);strokeWeight(1);noFill();box(IW,IH,ID);pop();
+}
+function drawGround(){
+ push();rotateX(HALF_PI);fill(30);noStroke();rect(-5000,-5000,10000,10000);stroke(48);
+ for(let i=-5000;i<=5000;i+=250){line(i,-5000,i,5000);line(-5000,i,5000,i);}pop();
+}
+function drawDrone(){
+ noStroke();fill(240);box(18,6,18);stroke(255,204,0);strokeWeight(2);
+ line(-18,0,-18,18,0,18);line(-18,0,18,18,0,-18);
+ for(let x of[-18,18])for(let z of[-18,18]){push();translate(x,-3,z);rotateY(rot);fill(200,230);noStroke();ellipse(0,0,24,4);pop();}
+ let p=map(sin(frameCount*0.25),-1,1,150,255);noStroke();
+ phase==="EXT"?fill(0,255,200,p):fill(255,100,0,p);sphere(12);
+}
+function moveDrone(t,cb,s){let v=p5.Vector.sub(t,drone);if(v.mag()>s){v.setMag(s);drone.add(v);}else cb();}
+function drawLaser(sc,r,g,b){
+ stroke(r,g,b,160);strokeWeight(1.5);line(drone.x,drone.y,drone.z,drone.x,0,drone.z);
+ if(frameCount%2===0)sc.push({x:drone.x,y:drone.y,z:drone.z,l:255});
+ for(let i=sc.length-1;i>=0;i--){push();translate(sc[i].x,sc[i].y,sc[i].z);noStroke();fill(r,g,b,sc[i].l);sphere(2);pop();sc[i].l-=16;if(sc[i].l<=0)sc.splice(i,1);}
+}
+function genEnv(cw,cd){env=[];let ex=cw/2+300,ez=cd/2+300;
+ for(let i=0;i<20;i++){let x=random(-2500,2500),z=random(-2500,2500);if(abs(x)<ex&&abs(z)<ez)x+=(x>0?ex:-ex);env.push({x,z,t:floor(random(3)),r:random(TWO_PI)});}
+}
+function windowResized(){resizeCanvas(windowWidth,windowHeight);}
+function doStartScan(){
+ showWalls=false;phase="EXT";sparks=[];iSparks=[];shelves=[];netW=0;netH=0;netD=0;
+ ['btn-internal','btn-shelves','btn-movim'].forEach(id=>document.getElementById(id).style.display='none');
+ document.getElementById('btn-start').disabled=true;
+ document.getElementById('btn-start').textContent='⏳ SCANNING...';
+ document.getElementById('report').style.display='none';
+ document.getElementById('shelf-panel').style.display='none';
+ document.getElementById('movim-panel').style.display='none';
+ spOpen=false;movimOpen=false;renderList();renderStats();
+ W=(parseFloat(document.getElementById('iW').value)||5)*M;
+ H=(parseFloat(document.getElementById('iH').value)||2.5)*M;
+ D=(parseFloat(document.getElementById('iD').value)||8)*M;
+ genEnv(W,D);
+ targets=[createVector(W/2,-H,D/2),createVector(W/2,0,D/2),createVector(-W/2,0,D/2),createVector(-W/2,-H,D/2),createVector(-W/2,-H,-D/2),createVector(-W/2,0,-D/2),createVector(W/2,0,-D/2),createVector(W/2,-H,-D/2)];
+ tIdx=0;drone.set(0,0,0);fase="TAKEOFF";droneOn=true;setPhase("TAKEOFF","yellow");showFlightBar(true);loop();
+}
+function doStartInternalScan(){
+ phase="INT";iSparks=[];
+ document.getElementById('btn-internal').style.display='none';
+ document.getElementById('btn-start').disabled=true;
+ document.getElementById('btn-start').textContent='⏳ SCANNING INT...';
+ let wt=WALL_T*M,bh=BEAM_H*M,st=SLAB_T*M,IW=W-2*wt,IH=H-bh-st,ID=D-2*wt;
+ iTargets=[createVector(IW/2,-(st+IH*0.25),ID/2),createVector(-IW/2,-(st+IH*0.25),ID/2),createVector(-IW/2,-(st+IH*0.75),ID/2),createVector(-IW/2,-(st+IH*0.75),-ID/2),createVector(IW/2,-(st+IH*0.75),-ID/2),createVector(IW/2,-(st+IH*0.25),-ID/2),createVector(IW/4,-(st+IH*0.5),ID/4),createVector(-IW/4,-(st+IH*0.5),-ID/4),createVector(0,-(st+IH*0.85),0)];
+ iIdx=0;drone.set(IW/2,-(st+IH*0.25),ID/2);droneOn=true;fase="SCANNING";setPhase("SCANNING INT","yellow");showFlightBar(true);loop();
+}
+function buildReport(){
+ let wm=W/M,hm=H/M,dm=D/M;
+ let iw=(wm-2*WALL_T).toFixed(2),id_=(dm-2*WALL_T).toFixed(2),ih=(hm-BEAM_H-SLAB_T).toFixed(2);
+ let an=(parseFloat(iw)*parseFloat(id_)).toFixed(2),al=(wm*dm).toFixed(2),vn=(parseFloat(iw)*parseFloat(ih)*parseFloat(id_)).toFixed(2),per=(2*(parseFloat(iw)+parseFloat(id_))).toFixed(2);
+ let nA=Math.max(2,Math.ceil(dm/2.5));
+ const secs=[
+ {t:'STRUTTURA ESTERNA',r:[['Larghezza esterna',wm.toFixed(2)+' m'],['Altezza esterna',hm.toFixed(2)+' m'],['Profondita esterna',dm.toFixed(2)+' m'],['Spessore muri',(WALL_T*100)+' cm'],['Altezza travi',(BEAM_H*100)+' cm'],['Spessore soletta',(SLAB_T*100)+' cm']]},
+ {t:'SUPERFICI E VOLUMI',r:[['Area lorda',al+' m²'],['Area netta piano',an+' m²'],['Volume netto',vn+' m³'],['Perimetro interno',per+' m']]},
+ {t:'ELEMENTI STRUTTURALI',r:[['N. campate',nA],['Passo campate',(dm/(nA-1)).toFixed(2)+' m'],['Pilastri perim.',nA*2],['Sez. pilastri',(COL_W*100)+'x'+(COL_W*100)+' cm'],['Travi trasv.',nA+' ('+ROOF_BW*100+'x'+ROOF_BH*100+' cm)'],['Travi long.','3 ('+ROOF_BW*100+'x'+Math.round(ROOF_BH*0.85*100)+' cm)']]},
+ ];
+ let html='';
+ for(const s of secs){html+=`<div class="report-section">${s.t}</div>`;for(const[l,v]of s.r)html+=`<div class="report-row"><span class="lbl">${l}</span><span class="val">${v}</span></div>`;}
+ html+='<div style="height:10px"></div>';
+ document.getElementById('report-body').innerHTML=html;
+ document.getElementById('report').style.display='block';
+ document.getElementById('btn-start').disabled=false;
+ document.getElementById('btn-start').textContent='▶ NEW SCAN';
+}
+let reportOpen=true;
+function toggleReport(){
+ reportOpen=!reportOpen;
+ document.getElementById('report-body').classList.toggle('collapsed',!reportOpen);
+ document.getElementById('report-toggle').classList.toggle('closed',!reportOpen);
+}
+function setPhase(l,d){document.getElementById('phase').textContent=l;document.getElementById('dot-scan').className='dot '+d;}
+['movim-panel','shelf-panel','report','panel-left'].forEach(id=>{
+ const el=document.getElementById(id);
+ if(el) el.addEventListener('wheel', e=>{ e.stopPropagation(); }, {passive:false});
+});
+</script>
+</body>
+</html>
